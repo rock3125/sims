@@ -123,6 +123,7 @@ add_executable(sims
     src/sim/MovementSystem.cpp
     src/sim/MotiveSystem.cpp
     src/sim/ActionSystem.cpp
+    src/sim/AutonomySystem.cpp
     src/sim/pathfinding/Pathfinder.cpp
     src/sim/time/SimClock.cpp
     src/sim/motives/Motives.cpp

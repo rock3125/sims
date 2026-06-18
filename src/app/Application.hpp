@@ -3,6 +3,7 @@
 #include "render/Camera.hpp"
 #include "render/Renderer.hpp"
 #include "sim/ActionSystem.hpp"
+#include "sim/AutonomySystem.hpp"
 #include "sim/MotiveSystem.hpp"
 #include "sim/MovementSystem.hpp"
 #include "sim/pathfinding/Pathfinder.hpp"
@@ -93,6 +94,10 @@ private:
     ui::PieMenu pie_menu_;
     Entity pie_target_object_{entt::null};
     Entity hovered_object_{entt::null};
+
+    // Phase 7: utility AI autonomy
+    std::optional<AutonomySystem> autonomy_system_;
+    bool autonomy_enabled_ = true;
 };
 
 } // namespace sims

@@ -94,6 +94,8 @@ bool Application::init() {
         return false;
     }
     action_system_.emplace(library_, *pathfinder_, grid_.coord());
+    autonomy_system_.emplace(library_, *pathfinder_, grid_.coord(),
+                             *action_system_);
 
     // Seed a small 4x4 starter room outline (tiles 6..9 on each axis) so the
     // wall renderer has visible geometry before the user places anything.
@@ -180,6 +182,9 @@ void Application::handle_event(const SDL_Event& ev) {
                     if (sim_entity_ != entt::null) {
                         ActionSystem::cancel(registry_, sim_entity_);
                     }
+                    break;
+                case SDL_SCANCODE_A:
+                    autonomy_enabled_ = !autonomy_enabled_;
                     break;
                 default: break;
             }
@@ -349,6 +354,12 @@ void Application::step_sim(double dt) {
     if (action_system_) {
         action_system_->update(registry_, sim_minutes);
     }
+
+    // Phase 7: utility AI autonomy — pick an interaction for idle Sims.
+    if (autonomy_system_) {
+        autonomy_system_->enabled = autonomy_enabled_;
+        autonomy_system_->update(registry_, sim_minutes);
+    }
 }
 
 void Application::render(double /*alpha*/) {
@@ -376,7 +387,7 @@ void Application::render(double /*alpha*/) {
     }
 
     if (ImGui::Begin("Sim Debug")) {
-        ImGui::TextUnformatted("Phase 6: Interactions + pie menu + ActionQueue.");
+        ImGui::TextUnformatted("Phase 7: Utility AI autonomy.");
         ImGui::Separator();
         char clock_buf[32];
         clock_.format(clock_buf, sizeof(clock_buf));
@@ -394,6 +405,9 @@ void Application::render(double /*alpha*/) {
             camera_.yaw(), camera_.pitch(), camera_.distance());
         ImGui::Separator();
         ImGui::Text("Mode: %s", build_mode_ ? "BUILD (B to toggle)" : "LIVE (B for build)");
+        ImGui::Checkbox("Autonomy (A)", &autonomy_enabled_);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(enabled: %s)", autonomy_enabled_ ? "yes" : "no");
         ImGui::Text("Grid: %dx%d  Walls: %zu", grid_.width(), grid_.depth(), grid_.wall_count());
 
         if (sim_entity_ != entt::null) {
@@ -478,6 +492,7 @@ void Application::render(double /*alpha*/) {
         ImGui::BulletText("Live mode: left-click object = pie menu");
         ImGui::BulletText("Live mode: left-click ground = walk");
         ImGui::BulletText("C: cancel current action queue");
+        ImGui::BulletText("A: toggle autonomy");
         ImGui::BulletText("B: toggle build mode");
         ImGui::BulletText("Build mode: left-click places/removes wall");
         ImGui::BulletText("Middle-drag: orbit");
