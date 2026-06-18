@@ -124,10 +124,12 @@ add_executable(sims
     src/sim/MotiveSystem.cpp
     src/sim/ActionSystem.cpp
     src/sim/AutonomySystem.cpp
+    src/sim/SaveLoad.cpp
     src/sim/pathfinding/Pathfinder.cpp
     src/sim/time/SimClock.cpp
     src/sim/motives/Motives.cpp
     src/content/InteractionLibrary.cpp
+    src/audio/AudioSystem.cpp
     src/ui/PieMenu.cpp
 )
 target_include_directories(sims PRIVATE src)

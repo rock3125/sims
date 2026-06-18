@@ -61,6 +61,8 @@ public:
     void remove_wall(const Edge& e) { walls_.erase(e); }
     void remove_wall(int tx, int tz, Side s) { remove_wall({tx, tz, s}); }
 
+    void clear_walls() { walls_.clear(); }
+
     const WallSet& walls() const { return walls_; }
     std::size_t wall_count() const { return walls_.size(); }
 

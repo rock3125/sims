@@ -4,6 +4,7 @@ add_executable(sims_tests
     test_simclock.cpp
     test_action_queue.cpp
     test_autonomy.cpp
+    test_save_load.cpp
 )
 target_include_directories(sims_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -24,6 +25,7 @@ target_sources(sims_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/sim/MovementSystem.cpp
     ${CMAKE_SOURCE_DIR}/src/sim/ActionSystem.cpp
     ${CMAKE_SOURCE_DIR}/src/sim/AutonomySystem.cpp
+    ${CMAKE_SOURCE_DIR}/src/sim/SaveLoad.cpp
     ${CMAKE_SOURCE_DIR}/src/sim/motives/Motives.cpp
     ${CMAKE_SOURCE_DIR}/src/sim/time/SimClock.cpp
     ${CMAKE_SOURCE_DIR}/src/content/InteractionLibrary.cpp

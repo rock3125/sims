@@ -2,10 +2,12 @@
 
 #include "render/Camera.hpp"
 #include "render/Renderer.hpp"
+#include "audio/AudioSystem.hpp"
 #include "sim/ActionSystem.hpp"
 #include "sim/AutonomySystem.hpp"
 #include "sim/MotiveSystem.hpp"
 #include "sim/MovementSystem.hpp"
+#include "sim/SaveLoad.hpp"
 #include "sim/pathfinding/Pathfinder.hpp"
 #include "sim/time/SimClock.hpp"
 #include "sim/world/TileGrid.hpp"
@@ -98,6 +100,16 @@ private:
     // Phase 7: utility AI autonomy
     std::optional<AutonomySystem> autonomy_system_;
     bool autonomy_enabled_ = true;
+
+    // Phase 8: save/load + audio
+    audio::AudioSystem audio_;
+    std::string save_path_;
+    bool sim_was_active_ = false; // tracks active->idle transitions for SFX
+    std::size_t prev_queue_size_ = 0; // detects autonomy enqueues for SFX
+
+    void do_save();
+    void do_load();
+    void refresh_sim_entity();
 };
 
 } // namespace sims

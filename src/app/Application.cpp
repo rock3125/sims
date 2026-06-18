@@ -2,6 +2,7 @@
 
 #include "sim/motives/Motives.hpp"
 #include "content/InteractionLibrary.hpp"
+#include "ecs/components.hpp"
 
 #include <glad/gl.h>
 #include <imgui.h>
@@ -75,6 +76,12 @@ bool Application::init() {
     SDL_GL_GetDrawableSize(window_, &drawable_w, &drawable_h);
     const char* assets_dir_env = getenv("SIMS_ASSETS_DIR");
     std::string assets_dir = assets_dir_env ? assets_dir_env : SIMS_ASSETS_DIR;
+
+    const char* save_env = getenv("SIMS_SAVE_PATH");
+    save_path_ = save_env ? save_env : "sims_save.json";
+
+    audio_.init(); // best-effort; degrades to no-op on headless
+
     if (!renderer_.init(drawable_w, drawable_h, assets_dir)) {
         std::fprintf(stderr, "[app] renderer init failed\n");
         return false;
@@ -139,6 +146,7 @@ bool Application::init() {
 }
 
 void Application::shutdown() {
+    audio_.shutdown();
     if (gl_) {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL2_Shutdown();
@@ -181,12 +189,19 @@ void Application::handle_event(const SDL_Event& ev) {
                 case SDL_SCANCODE_C:
                     if (sim_entity_ != entt::null) {
                         ActionSystem::cancel(registry_, sim_entity_);
+                        audio_.play(audio::AudioSystem::Sfx::Cancel);
                     }
                     break;
                 case SDL_SCANCODE_A:
                     autonomy_enabled_ = !autonomy_enabled_;
                     break;
                 default: break;
+            }
+            // Ctrl+S / Ctrl+L for save/load (Phase 8).
+            {
+                const bool ctrl = (ev.key.keysym.mod & KMOD_CTRL) != 0;
+                if (ctrl && ev.key.keysym.scancode == SDL_SCANCODE_S) do_save();
+                else if (ctrl && ev.key.keysym.scancode == SDL_SCANCODE_L) do_load();
             }
             break;
         case SDL_MOUSEMOTION:
@@ -355,11 +370,69 @@ void Application::step_sim(double dt) {
         action_system_->update(registry_, sim_minutes);
     }
 
+    // Phase 8: detect action completion (active -> idle) for SFX.
+    if (sim_entity_ != entt::null) {
+        auto* aq = registry_.try_get<ActionQueue>(sim_entity_);
+        const bool active = aq && aq->active();
+        if (sim_was_active_ && !active) {
+            audio_.play(audio::AudioSystem::Sfx::Complete);
+        }
+        sim_was_active_ = active;
+    }
+
     // Phase 7: utility AI autonomy — pick an interaction for idle Sims.
     if (autonomy_system_) {
         autonomy_system_->enabled = autonomy_enabled_;
+        std::size_t before = 0;
+        if (sim_entity_ != entt::null) {
+            auto* aq = registry_.try_get<ActionQueue>(sim_entity_);
+            if (aq) before = aq->queue.size();
+        }
         autonomy_system_->update(registry_, sim_minutes);
+        // Phase 8: soft click when autonomy enqueues a new action.
+        if (sim_entity_ != entt::null) {
+            auto* aq = registry_.try_get<ActionQueue>(sim_entity_);
+            if (aq && aq->queue.size() > before) {
+                audio_.play(audio::AudioSystem::Sfx::Click);
+            }
+        }
     }
+}
+
+void Application::refresh_sim_entity() {
+    sim_entity_ = entt::null;
+    auto view = registry_.view<Sim>();
+    if (!view.empty()) sim_entity_ = view.front();
+    sim_was_active_ = false;
+    prev_queue_size_ = 0;
+}
+
+void Application::do_save() {
+    if (!SaveLoad::save_to_file(save_path_, registry_, grid_, clock_)) {
+        std::fprintf(stderr, "[app] save failed: %s\n", save_path_.c_str());
+        audio_.play(audio::AudioSystem::Sfx::Cancel);
+        return;
+    }
+    std::printf("[app] saved to %s\n", save_path_.c_str());
+    audio_.play(audio::AudioSystem::Sfx::Complete);
+}
+
+void Application::do_load() {
+    if (!SaveLoad::load_from_file(save_path_, registry_, grid_, clock_, library_)) {
+        std::fprintf(stderr, "[app] load failed: %s\n", save_path_.c_str());
+        audio_.play(audio::AudioSystem::Sfx::Cancel);
+        return;
+    }
+    // pathfinder depends on grid dimensions; rebuild it after a load.
+    pathfinder_.emplace(grid_);
+    // action_system_ + autonomy_system_ hold references to the old pathfinder;
+    // reconstruct them so they observe the new grid/pathfinder.
+    action_system_.emplace(library_, *pathfinder_, grid_.coord());
+    autonomy_system_.emplace(library_, *pathfinder_, grid_.coord(),
+                             *action_system_);
+    refresh_sim_entity();
+    std::printf("[app] loaded from %s\n", save_path_.c_str());
+    audio_.play(audio::AudioSystem::Sfx::Click);
 }
 
 void Application::render(double /*alpha*/) {
@@ -380,6 +453,9 @@ void Application::render(double /*alpha*/) {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Save", "Ctrl+S")) do_save();
+            if (ImGui::MenuItem("Load", "Ctrl+L")) do_load();
+            ImGui::Separator();
             if (ImGui::MenuItem("Quit", "Esc")) running_ = false;
             ImGui::EndMenu();
         }
@@ -387,7 +463,7 @@ void Application::render(double /*alpha*/) {
     }
 
     if (ImGui::Begin("Sim Debug")) {
-        ImGui::TextUnformatted("Phase 7: Utility AI autonomy.");
+        ImGui::TextUnformatted("Phase 8: Save/load + audio.");
         ImGui::Separator();
         char clock_buf[32];
         clock_.format(clock_buf, sizeof(clock_buf));
@@ -409,6 +485,25 @@ void Application::render(double /*alpha*/) {
         ImGui::SameLine();
         ImGui::TextDisabled("(enabled: %s)", autonomy_enabled_ ? "yes" : "no");
         ImGui::Text("Grid: %dx%d  Walls: %zu", grid_.width(), grid_.depth(), grid_.wall_count());
+        ImGui::Separator();
+        if (ImGui::Button("Save (Ctrl+S)")) do_save();
+        ImGui::SameLine();
+        if (ImGui::Button("Load (Ctrl+L)")) do_load();
+        ImGui::SameLine();
+        {
+            char buf[256];
+            std::snprintf(buf, sizeof(buf), "%s", save_path_.c_str());
+            ImGui::InputText("##savepath", buf, sizeof(buf),
+                             ImGuiInputTextFlags_ReadOnly);
+        }
+        {
+            bool aen = audio_.enabled();
+            if (ImGui::Checkbox("Audio", &aen)) audio_.set_enabled(aen);
+            ImGui::SameLine();
+            if (ImGui::Button("Test Click")) audio_.play(audio::AudioSystem::Sfx::Click);
+            ImGui::SameLine();
+            if (ImGui::Button("Test Done")) audio_.play(audio::AudioSystem::Sfx::Complete);
+        }
 
         if (sim_entity_ != entt::null) {
             auto* tr = registry_.try_get<Transform>(sim_entity_);
@@ -493,6 +588,7 @@ void Application::render(double /*alpha*/) {
         ImGui::BulletText("Live mode: left-click ground = walk");
         ImGui::BulletText("C: cancel current action queue");
         ImGui::BulletText("A: toggle autonomy");
+        ImGui::BulletText("Ctrl+S: save   Ctrl+L: load");
         ImGui::BulletText("B: toggle build mode");
         ImGui::BulletText("Build mode: left-click places/removes wall");
         ImGui::BulletText("Middle-drag: orbit");
@@ -522,6 +618,7 @@ void Application::render(double /*alpha*/) {
                     action_system_->enqueue(registry_, sim_entity_,
                                             def->interaction_ids[sel],
                                             pie_target_object_);
+                    audio_.play(audio::AudioSystem::Sfx::Click);
                 }
                 pie_target_object_ = entt::null;
             }
