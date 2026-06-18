@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace sims {
 
@@ -19,6 +20,15 @@ struct SimRenderState {
     float facing_deg = 0.0f;
     float walk_phase = 0.0f;
     bool moving = false;
+};
+
+// One entry per placed world object this frame.
+struct ObjectRenderState {
+    glm::vec3 position{0.0f};   // tile-center ground position
+    glm::vec3 color{1.0f};
+    int footprint_w = 1;
+    int footprint_d = 1;
+    bool highlight = false;     // draw outline / brighter when hovered/selected
 };
 
 // Owns the default lit + flat (unlit) shaders, the floor plane, procedural
@@ -42,6 +52,7 @@ public:
     void set_build_mode(bool b) { build_mode_ = b; }
     void set_sim(std::optional<SimRenderState> s) { sim_state_ = s; }
     void set_path(std::vector<glm::vec3> pts) { path_pts_ = std::move(pts); }
+    void set_objects(std::vector<ObjectRenderState> objs) { objects_ = std::move(objs); }
 
     void render(const Camera& cam, double /*alpha*/);
 
@@ -70,6 +81,8 @@ private:
     GLuint path_vbo_ = 0;
     GLsizei path_vert_count_ = 0;
     std::vector<glm::vec3> path_pts_;
+
+    std::vector<ObjectRenderState> objects_;
 
     std::string assets_dir_;
     const world::TileGrid* grid_ = nullptr;

@@ -1,0 +1,44 @@
+{
+  "interactions": [
+    {
+      "id": "eat_snack",
+      "label": "Eat Snack",
+      "category": "Hunger",
+      "duration_min": 30,
+      "motive_deltas": { "Hunger": 50, "Energy": -5, "Bladder": -10 },
+      "target": "Object"
+    },
+    {
+      "id": "sleep",
+      "label": "Sleep",
+      "category": "Energy",
+      "duration_min": 240,
+      "motive_deltas": { "Energy": 100, "Hunger": -20 },
+      "target": "Object"
+    },
+    {
+      "id": "use_toilet",
+      "label": "Use Toilet",
+      "category": "Bladder",
+      "duration_min": 10,
+      "motive_deltas": { "Bladder": 100, "Hygiene": -5 },
+      "target": "Object"
+    },
+    {
+      "id": "watch_tv",
+      "label": "Watch TV",
+      "category": "Fun",
+      "duration_min": 60,
+      "motive_deltas": { "Fun": 40, "Energy": -10, "Social": 5 },
+      "target": "Object"
+    },
+    {
+      "id": "chat_self",
+      "label": "Talk to Self",
+      "category": "Social",
+      "duration_min": 20,
+      "motive_deltas": { "Social": 30, "Fun": 5 },
+      "target": "Self"
+    }
+  ]
+}

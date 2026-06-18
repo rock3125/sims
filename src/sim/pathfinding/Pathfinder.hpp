@@ -39,6 +39,14 @@ public:
     // empty()=true).
     Path find(const glm::ivec2& start, const glm::ivec2& goal) const;
 
+    // Find a path from `start` to any tile orthogonally adjacent to the
+    // axis-aligned footprint [fx, fx+fw) x [fz, fz+fd). Returns the shortest
+    // path among all valid, passable adjacent tiles. `valid=false` if no
+    // approachable tile exists. The endpoint of the returned path is the
+    // chosen adjacent tile.
+    Path find_to_adjacent(const glm::ivec2& start,
+                          int fx, int fz, int fw, int fd) const;
+
     // True if `from` and `to` (orthogonal neighbors) have no wall between
     // them and both tiles are in bounds. Diagonal pairs return false.
     bool passable(int from_x, int from_z, int to_x, int to_z) const;

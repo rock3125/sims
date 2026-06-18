@@ -122,9 +122,12 @@ add_executable(sims
     src/render/stb_image_impl.cpp
     src/sim/MovementSystem.cpp
     src/sim/MotiveSystem.cpp
+    src/sim/ActionSystem.cpp
     src/sim/pathfinding/Pathfinder.cpp
     src/sim/time/SimClock.cpp
     src/sim/motives/Motives.cpp
+    src/content/InteractionLibrary.cpp
+    src/ui/PieMenu.cpp
 )
 target_include_directories(sims PRIVATE src)
 target_link_libraries(sims PRIVATE

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/registry.hpp"
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
@@ -62,6 +64,46 @@ struct Movement {
     float speed = 2.0f;          // meters per second
     bool has_target = false;
     std::deque<glm::vec3> waypoints; // remaining waypoints after `target`
+};
+
+// A placeable world object instance (furniture/appliance). `def_id` keys
+// into the InteractionLibrary. Phase 6 keeps footprints axis-aligned (no
+// yaw rotation of the footprint).
+struct WorldObject {
+    std::string def_id;
+    int tile_x = 0;
+    int tile_z = 0;
+    int footprint_w = 1;
+    int footprint_d = 1;
+    glm::vec3 color{1.0f};
+};
+
+// Per-Sim action queue. The ActionSystem processes queue[0] each tick;
+// subsequent entries are pending. Each action transitions through:
+//   PendingMove -> Moving -> Performing -> (popped on completion)
+// Self-target actions skip PendingMove/Moving and go straight to Performing.
+struct ActionQueue {
+    enum class Phase : std::uint8_t {
+        PendingMove,
+        Moving,
+        Performing,
+        Done,
+    };
+
+    struct Action {
+        std::string interaction_id;
+        Entity target_object = entt::null; // for Object-target actions
+        Phase phase = Phase::PendingMove;
+        double elapsed_min = 0.0;
+        double duration_min = 0.0;
+        glm::vec3 approach_target{0.0f}; // world pos Sim should stand at
+        bool aborted = false;
+    };
+
+    std::deque<Action> queue;
+    bool active() const { return !queue.empty(); }
+    Action* current() { return queue.empty() ? nullptr : &queue.front(); }
+    const Action* current() const { return queue.empty() ? nullptr : &queue.front(); }
 };
 
 } // namespace sims

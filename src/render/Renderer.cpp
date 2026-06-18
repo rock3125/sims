@@ -175,6 +175,21 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
     floor_texture_.bind(0);
     floor_mesh_.draw();
 
+    // World objects: tinted cubes scaled to their footprint (1m tall).
+    lit_shader_.set_int("u_has_texture", 0);
+    for (const auto& obj : objects_) {
+        glm::mat4 m(1.0f);
+        m = glm::translate(m, {obj.position.x, 0.5f, obj.position.z});
+        m = glm::scale(m, {static_cast<float>(obj.footprint_w),
+                           1.0f,
+                           static_cast<float>(obj.footprint_d)});
+        lit_shader_.set_mat4("u_model", &m[0][0]);
+        glm::vec3 c = obj.color;
+        if (obj.highlight) c = c * 1.25f + glm::vec3(0.1f);
+        lit_shader_.set_vec3("u_base_color", c.x, c.y, c.z);
+        furniture_mesh_.draw();
+    }
+
     // Sim avatar (procedural humanoid with walk-cycle animation).
     if (sim_state_) {
         avatar_.draw(lit_shader_, sim_state_->position, sim_state_->facing_deg,

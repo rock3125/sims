@@ -2,12 +2,15 @@
 
 #include "render/Camera.hpp"
 #include "render/Renderer.hpp"
+#include "sim/ActionSystem.hpp"
 #include "sim/MotiveSystem.hpp"
 #include "sim/MovementSystem.hpp"
 #include "sim/pathfinding/Pathfinder.hpp"
 #include "sim/time/SimClock.hpp"
 #include "sim/world/TileGrid.hpp"
+#include "content/InteractionLibrary.hpp"
 #include "ecs/registry.hpp"
+#include "ui/PieMenu.hpp"
 
 #include <SDL2/SDL.h>
 
@@ -44,6 +47,10 @@ private:
     void step_sim(double dt);   // fixed-step simulation tick
     void render(double alpha);  // interpolated frame render
 
+    // Phase 6 helpers
+    Entity pick_object(int screen_x, int screen_y);
+    void open_pie_menu_for(Entity obj_e, int screen_x, int screen_y);
+
     AppConfig cfg_;
     SDL_Window* window_ = nullptr;
     SDL_GLContext gl_ = nullptr;
@@ -79,6 +86,13 @@ private:
     time::SimClock clock_;
     MotiveSystem motive_system_;
     double sim_minutes_accum_ = 0.0; // sim-minutes elapsed this tick, fed to systems
+
+    // Phase 6: content library, action system, world objects, pie menu
+    content::InteractionLibrary library_;
+    std::optional<ActionSystem> action_system_;
+    ui::PieMenu pie_menu_;
+    Entity pie_target_object_{entt::null};
+    Entity hovered_object_{entt::null};
 };
 
 } // namespace sims

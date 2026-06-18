@@ -1,0 +1,32 @@
+{
+  "objects": [
+    {
+      "id": "fridge",
+      "label": "Refrigerator",
+      "color": [0.85, 0.85, 0.92],
+      "footprint": [1, 1],
+      "interactions": ["eat_snack"]
+    },
+    {
+      "id": "bed",
+      "label": "Bed",
+      "color": [0.55, 0.35, 0.28],
+      "footprint": [1, 2],
+      "interactions": ["sleep"]
+    },
+    {
+      "id": "toilet",
+      "label": "Toilet",
+      "color": [0.92, 0.94, 1.00],
+      "footprint": [1, 1],
+      "interactions": ["use_toilet"]
+    },
+    {
+      "id": "tv",
+      "label": "Television",
+      "color": [0.18, 0.18, 0.22],
+      "footprint": [1, 1],
+      "interactions": ["watch_tv"]
+    }
+  ]
+}

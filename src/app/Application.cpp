@@ -1,6 +1,7 @@
 #include "app/Application.hpp"
 
 #include "sim/motives/Motives.hpp"
+#include "content/InteractionLibrary.hpp"
 
 #include <glad/gl.h>
 #include <imgui.h>
@@ -86,6 +87,14 @@ bool Application::init() {
 
     pathfinder_.emplace(grid_);
 
+    // Phase 6: load JSON content + build the action system.
+    if (!library_.load(assets_dir + "/definitions/interactions.json",
+                       assets_dir + "/definitions/objects.json")) {
+        std::fprintf(stderr, "[app] failed to load content library\n");
+        return false;
+    }
+    action_system_.emplace(library_, *pathfinder_, grid_.coord());
+
     // Seed a small 4x4 starter room outline (tiles 6..9 on each axis) so the
     // wall renderer has visible geometry before the user places anything.
     for (int i = 0; i < 4; ++i) {
@@ -102,6 +111,27 @@ bool Application::init() {
     registry_.emplace<Sim>(sim_entity_, Sim{"Alex", 0.0f, 0.0f, false});
     registry_.emplace<Movement>(sim_entity_, Movement{sim_start, sim_start, 2.0f, false, {}});
     registry_.emplace<Motives>(sim_entity_, Motives{});
+    registry_.emplace<ActionQueue>(sim_entity_, ActionQueue{});
+
+    // Phase 6: spawn one of each object def inside the starter room.
+    auto spawn = [&](const std::string& def_id, int tx, int tz) {
+        const auto* def = library_.object(def_id);
+        if (!def) return;
+        Entity e = registry_.create();
+        glm::vec3 pos = grid_.coord().tile_to_world(tx, tz);
+        // Multi-tile footprints: center the cube over the footprint.
+        pos.x += (def->footprint_w - 1) * 0.5f;
+        pos.z += (def->footprint_d - 1) * 0.5f;
+        registry_.emplace<Transform>(e, Transform{pos, 0.0f,
+            {static_cast<float>(def->footprint_w), 1.0f,
+             static_cast<float>(def->footprint_d)}});
+        registry_.emplace<WorldObject>(e, WorldObject{def_id, tx, tz,
+            def->footprint_w, def->footprint_d, def->color});
+    };
+    spawn("fridge",  7, 7);
+    spawn("bed",     9, 7);
+    spawn("toilet",  7, 9);
+    spawn("tv",      9, 9);
 
     return true;
 }
@@ -146,6 +176,11 @@ void Application::handle_event(const SDL_Event& ev) {
                 case SDL_SCANCODE_ESCAPE: running_ = false; break;
                 case SDL_SCANCODE_F1: show_demo_ = !show_demo_; break;
                 case SDL_SCANCODE_B: build_mode_ = !build_mode_; break;
+                case SDL_SCANCODE_C:
+                    if (sim_entity_ != entt::null) {
+                        ActionSystem::cancel(registry_, sim_entity_);
+                    }
+                    break;
                 default: break;
             }
             break;
@@ -186,21 +221,35 @@ void Application::handle_event(const SDL_Event& ev) {
                     else grid_.add_wall(*hovered_edge_);
                 }
             } else if (ev.button.button == SDL_BUTTON_LEFT && !build_mode_) {
-                // Live mode: click-to-walk via A* pathfinding.
-                int w = 0, h = 0;
-                SDL_GL_GetDrawableSize(window_, &w, &h);
-                auto ground = camera_.screen_to_ground(ev.button.x, ev.button.y, w, h);
-                if (ground && sim_entity_ != entt::null && pathfinder_) {
-                    int stx = 0, stz = 0;
-                    auto* tr = registry_.try_get<Transform>(sim_entity_);
-                    if (tr && grid_.coord().world_to_tile(tr->position, stx, stz)) {
-                        int gtx = 0, gtz = 0;
-                        if (grid_.coord().world_to_tile(*ground, gtx, gtz)) {
-                            auto path = pathfinder_->find({stx, stz}, {gtx, gtz});
-                            last_path_ = path;
-                            if (path.valid) {
-                                MovementSystem::set_path(registry_, sim_entity_, path,
-                                                         grid_.coord());
+                // Live mode. If the pie menu is open, let it handle this click
+                // in render(); otherwise either open the pie menu on a clicked
+                // object or fall back to click-to-walk.
+                if (pie_menu_.open) {
+                    // Pie menu consumes the click during render().
+                } else if (sim_entity_ != entt::null && pathfinder_ && action_system_) {
+                    Entity hit = pick_object(ev.button.x, ev.button.y);
+                    if (hit != entt::null) {
+                        open_pie_menu_for(hit, ev.button.x, ev.button.y);
+                    } else {
+                        // Click-to-walk via A* pathfinding.
+                        int w = 0, h = 0;
+                        SDL_GL_GetDrawableSize(window_, &w, &h);
+                        auto ground = camera_.screen_to_ground(ev.button.x, ev.button.y, w, h);
+                        if (ground) {
+                            // Cancel any active action queue when free-walking.
+                            ActionSystem::cancel(registry_, sim_entity_);
+                            int stx = 0, stz = 0;
+                            auto* tr = registry_.try_get<Transform>(sim_entity_);
+                            if (tr && grid_.coord().world_to_tile(tr->position, stx, stz)) {
+                                int gtx = 0, gtz = 0;
+                                if (grid_.coord().world_to_tile(*ground, gtx, gtz)) {
+                                    auto path = pathfinder_->find({stx, stz}, {gtx, gtz});
+                                    last_path_ = path;
+                                    if (path.valid) {
+                                        MovementSystem::set_path(registry_, sim_entity_, path,
+                                                                 grid_.coord());
+                                    }
+                                }
                             }
                         }
                     }
@@ -242,6 +291,48 @@ void Application::update_hover() {
     hovered_edge_ = pick;
 }
 
+Entity Application::pick_object(int screen_x, int screen_y) {
+    int w = 0, h = 0;
+    SDL_GL_GetDrawableSize(window_, &w, &h);
+    auto ground = camera_.screen_to_ground(screen_x, screen_y, w, h);
+    if (!ground) return entt::null;
+
+    int tx = 0, tz = 0;
+    grid_.coord().world_to_tile(*ground, tx, tz);
+
+    Entity best = entt::null;
+    float best_dist = 1.5f; // max pick radius (meters) from object center
+    auto view = registry_.view<WorldObject, Transform>();
+    for (auto e : view) {
+        const auto& wo = view.get<WorldObject>(e);
+        // Containment check: click inside the footprint wins immediately.
+        if (tx >= wo.tile_x && tx < wo.tile_x + wo.footprint_w &&
+            tz >= wo.tile_z && tz < wo.tile_z + wo.footprint_d) {
+            return e;
+        }
+        // Otherwise nearest object center within radius.
+        const auto& tr = view.get<Transform>(e);
+        glm::vec3 d = tr.position - *ground;
+        d.y = 0.0f;
+        float dist = glm::length(d);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best = e;
+        }
+    }
+    return best;
+}
+
+void Application::open_pie_menu_for(Entity obj_e, int screen_x, int screen_y) {
+    const auto* wo = registry_.try_get<WorldObject>(obj_e);
+    if (!wo) return;
+    const auto* def = library_.object(wo->def_id);
+    if (!def || def->interaction_ids.empty()) return;
+    pie_target_object_ = obj_e;
+    pie_menu_.show_at(ImVec2(static_cast<float>(screen_x),
+                             static_cast<float>(screen_y)));
+}
+
 void Application::step_sim(double dt) {
     // Advance sim-time and tick the motives system. dt is in real seconds;
     // the clock converts to sim-minutes via its time scale.
@@ -252,6 +343,11 @@ void Application::step_sim(double dt) {
     // Phase 3: advance Sim movement each fixed tick.
     if (sim_entity_ != entt::null) {
         movement_.update(registry_, static_cast<float>(dt));
+    }
+
+    // Phase 6: drive the action queue (uses movement + motives).
+    if (action_system_) {
+        action_system_->update(registry_, sim_minutes);
     }
 }
 
@@ -280,7 +376,7 @@ void Application::render(double /*alpha*/) {
     }
 
     if (ImGui::Begin("Sim Debug")) {
-        ImGui::TextUnformatted("Phase 5: Motives + SimClock.");
+        ImGui::TextUnformatted("Phase 6: Interactions + pie menu + ActionQueue.");
         ImGui::Separator();
         char clock_buf[32];
         clock_.format(clock_buf, sizeof(clock_buf));
@@ -338,6 +434,28 @@ void Application::render(double /*alpha*/) {
                 }
                 ImGui::Text("Mood (avg): %.1f", mo->average());
             }
+            auto* aq = registry_.try_get<ActionQueue>(sim_entity_);
+            if (aq) {
+                ImGui::Separator();
+                if (aq->queue.empty()) {
+                    ImGui::TextUnformatted("Action queue: (idle)");
+                } else {
+                    const auto* cur = aq->current();
+                    const char* phase = "?";
+                    switch (cur->phase) {
+                        case ActionQueue::Phase::PendingMove:  phase = "PendingMove"; break;
+                        case ActionQueue::Phase::Moving:       phase = "Moving"; break;
+                        case ActionQueue::Phase::Performing:   phase = "Performing"; break;
+                        case ActionQueue::Phase::Done:         phase = "Done"; break;
+                    }
+                    ImGui::Text("Action: %s  [%s]", cur->interaction_id.c_str(), phase);
+                    if (cur->phase == ActionQueue::Phase::Performing) {
+                        ImGui::Text("  progress: %.1f / %.1f min",
+                                    cur->elapsed_min, cur->duration_min);
+                    }
+                    ImGui::Text("  queued: %zu", aq->queue.size());
+                }
+            }
         }
 
         if (last_path_ && last_path_->valid) {
@@ -357,7 +475,9 @@ void Application::render(double /*alpha*/) {
         }
         ImGui::Separator();
         ImGui::TextUnformatted("Controls:");
-        ImGui::BulletText("Live mode: left-click sets walk target");
+        ImGui::BulletText("Live mode: left-click object = pie menu");
+        ImGui::BulletText("Live mode: left-click ground = walk");
+        ImGui::BulletText("C: cancel current action queue");
         ImGui::BulletText("B: toggle build mode");
         ImGui::BulletText("Build mode: left-click places/removes wall");
         ImGui::BulletText("Middle-drag: orbit");
@@ -368,6 +488,33 @@ void Application::render(double /*alpha*/) {
     }
 
     if (show_demo_) ImGui::ShowDemoWindow(&show_demo_);
+
+    // Phase 6: pie menu. Draws on the foreground layer; on selection or
+    // cancel, dispatch the chosen interaction to the action system.
+    if (pie_menu_.open && pie_target_object_ != entt::null) {
+        const auto* wo = registry_.try_get<WorldObject>(pie_target_object_);
+        const auto* def = wo ? library_.object(wo->def_id) : nullptr;
+        if (def) {
+            std::vector<std::string> labels;
+            labels.reserve(def->interaction_ids.size());
+            for (const auto& iid : def->interaction_ids) {
+                const auto* idef = library_.interaction(iid);
+                labels.push_back(idef ? idef->label : iid);
+            }
+            if (pie_menu_.draw(def->label.c_str(), labels) && action_system_) {
+                int sel = pie_menu_.hovered;
+                if (sel >= 0 && sel < static_cast<int>(def->interaction_ids.size())) {
+                    action_system_->enqueue(registry_, sim_entity_,
+                                            def->interaction_ids[sel],
+                                            pie_target_object_);
+                }
+                pie_target_object_ = entt::null;
+            }
+        } else {
+            pie_menu_.close();
+            pie_target_object_ = entt::null;
+        }
+    }
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -421,6 +568,28 @@ int Application::run() {
             }
         }
         renderer_.set_path(std::move(path_pts));
+
+        // Phase 6: push world-object render state, with hover highlight.
+        hovered_object_ = entt::null;
+        if (!build_mode_ && !pie_menu_.open) {
+            hovered_object_ = pick_object(mouse_x_, mouse_y_);
+        }
+        std::vector<ObjectRenderState> obj_states;
+        {
+            auto view = registry_.view<WorldObject, Transform>();
+            for (auto e : view) {
+                const auto& wo = view.get<WorldObject>(e);
+                const auto& tr = view.get<Transform>(e);
+                ObjectRenderState s;
+                s.position = tr.position;
+                s.color = wo.color;
+                s.footprint_w = wo.footprint_w;
+                s.footprint_d = wo.footprint_d;
+                s.highlight = (e == hovered_object_) || (e == pie_target_object_);
+                obj_states.push_back(s);
+            }
+        }
+        renderer_.set_objects(std::move(obj_states));
 
         if (sim_entity_ != entt::null) {
             auto* tr = registry_.try_get<Transform>(sim_entity_);

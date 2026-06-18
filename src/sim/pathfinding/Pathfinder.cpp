@@ -126,5 +126,37 @@ Path Pathfinder::find(const glm::ivec2& start, const glm::ivec2& goal) const {
     return out;
 }
 
+Path Pathfinder::find_to_adjacent(const glm::ivec2& start,
+                                  int fx, int fz, int fw, int fd) const {
+    // Enumerate all orthogonally-adjacent tiles around the footprint that
+    // are in-bounds, then return the shortest path to any of them.
+    Path best;
+    best.valid = false;
+    std::size_t best_len = static_cast<std::size_t>(-1);
+
+    auto consider = [&](int tx, int tz) {
+        if (!grid_.in_bounds_tile(tx, tz)) return;
+        Path p = find(start, {tx, tz});
+        if (!p.valid) return;
+        std::size_t len = p.size();
+        if (len < best_len) {
+            best = std::move(p);
+            best_len = len;
+        }
+    };
+
+    // Tiles along the -x and +x sides.
+    for (int z = fz; z < fz + fd; ++z) {
+        consider(fx - 1, z);
+        consider(fx + fw, z);
+    }
+    // Tiles along the -z and +z sides.
+    for (int x = fx; x < fx + fw; ++x) {
+        consider(x, fz - 1);
+        consider(x, fz + fd);
+    }
+    return best;
+}
+
 } // namespace pathfinding
 } // namespace sims
