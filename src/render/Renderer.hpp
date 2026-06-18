@@ -41,6 +41,7 @@ public:
     void set_preview_wall(std::optional<world::TileGrid::Edge> e) { preview_wall_ = e; }
     void set_build_mode(bool b) { build_mode_ = b; }
     void set_sim(std::optional<SimRenderState> s) { sim_state_ = s; }
+    void set_path(std::vector<glm::vec3> pts) { path_pts_ = std::move(pts); }
 
     void render(const Camera& cam, double /*alpha*/);
 
@@ -64,6 +65,11 @@ private:
     GLuint wall_vbo_ = 0;
     GLuint wall_ibo_ = 0;
     GLsizei wall_index_count_ = 0;
+
+    GLuint path_vao_ = 0;
+    GLuint path_vbo_ = 0;
+    GLsizei path_vert_count_ = 0;
+    std::vector<glm::vec3> path_pts_;
 
     std::string assets_dir_;
     const world::TileGrid* grid_ = nullptr;

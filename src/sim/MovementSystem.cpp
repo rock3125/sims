@@ -21,13 +21,47 @@ float angle_diff(float from, float to) {
 
 } // namespace
 
-void MovementSystem::set_target(Registry& reg, Entity e, const glm::vec3& world_target) {
+void MovementSystem::stop(Registry& reg, Entity e) {
+    auto* mv = reg.try_get<Movement>(e);
+    if (!mv) return;
+    mv->has_target = false;
+    mv->waypoints.clear();
+}
+
+void MovementSystem::set_path(Registry& reg, Entity e, const pathfinding::Path& path,
+                              const world::Coord& coord) {
     auto* mv = reg.try_get<Movement>(e);
     auto* tr = reg.try_get<Transform>(e);
     if (!mv || !tr) return;
-    mv->target = glm::vec3(world_target.x, 0.0f, world_target.z);
+
+    mv->waypoints.clear();
+    mv->has_target = false;
+
+    if (!path.valid || path.waypoints.empty()) return;
+
+    // First waypoint should be the Sim's current tile; skip it if so to avoid
+    // a zero-length first step. Otherwise start from the first entry.
+    int cur_tx = 0, cur_tz = 0;
+    bool on_tile = coord.world_to_tile(tr->position, cur_tx, cur_tz);
+
+    std::size_t start_idx = 0;
+    if (on_tile && path.waypoints.size() > 1 &&
+        path.waypoints.front().x == cur_tx && path.waypoints.front().y == cur_tz) {
+        start_idx = 1;
+    }
+
+    for (std::size_t i = start_idx; i < path.waypoints.size(); ++i) {
+        const auto& wp = path.waypoints[i];
+        glm::vec3 w = coord.tile_to_world(wp.x, wp.y);
+        mv->waypoints.push_back(w);
+    }
+
+    if (mv->waypoints.empty()) return;
+
+    mv->target = mv->waypoints.front();
+    mv->final_target = mv->waypoints.back();
+    mv->waypoints.pop_front();
     mv->has_target = true;
-    (void)tr;
 }
 
 void MovementSystem::update(Registry& reg, float dt) {
@@ -48,8 +82,13 @@ void MovementSystem::update(Registry& reg, float dt) {
 
         if (dist <= kArriveEpsilon) {
             tr.position = mv.target;
-            mv.has_target = false;
-            sim.moving = false;
+            if (!mv.waypoints.empty()) {
+                mv.target = mv.waypoints.front();
+                mv.waypoints.pop_front();
+            } else {
+                mv.has_target = false;
+                sim.moving = false;
+            }
             continue;
         }
 

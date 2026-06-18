@@ -59,6 +59,8 @@ bool Renderer::init(int viewport_w, int viewport_h, const std::string& assets_di
     glGenVertexArrays(1, &wall_vao_);
     glGenBuffers(1, &wall_vbo_);
     glGenBuffers(1, &wall_ibo_);
+    glGenVertexArrays(1, &path_vao_);
+    glGenBuffers(1, &path_vbo_);
     return true;
 }
 
@@ -228,6 +230,20 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
         glBindVertexArray(wall_vao_);
         glDrawElements(GL_TRIANGLES, wall_index_count_, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
+
+        // Path waypoints (debug line strip) — Phase 4.
+        if (path_pts_.size() >= 2) {
+            glBindVertexArray(path_vao_);
+            glBindBuffer(GL_ARRAY_BUFFER, path_vbo_);
+            glBufferData(GL_ARRAY_BUFFER, path_pts_.size() * sizeof(glm::vec3),
+                         path_pts_.data(), GL_DYNAMIC_DRAW);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+            flat_shader_.set_mat4("u_model", &identity[0][0]);
+            flat_shader_.set_vec3("u_color", 0.2f, 0.9f, 1.0f);
+            glDrawArrays(GL_LINE_STRIP, 0, static_cast<GLsizei>(path_pts_.size()));
+            glBindVertexArray(0);
+        }
 
         flat_shader_.release();
     }

@@ -2,7 +2,10 @@
 
 #include "render/Camera.hpp"
 #include "render/Renderer.hpp"
+#include "sim/MotiveSystem.hpp"
 #include "sim/MovementSystem.hpp"
+#include "sim/pathfinding/Pathfinder.hpp"
+#include "sim/time/SimClock.hpp"
 #include "sim/world/TileGrid.hpp"
 #include "ecs/registry.hpp"
 
@@ -67,6 +70,15 @@ private:
     Registry registry_;
     Entity sim_entity_{entt::null};
     MovementSystem movement_;
+
+    // Phase 4: pathfinding (recomputed on each click-to-walk)
+    std::optional<pathfinding::Pathfinder> pathfinder_;
+    std::optional<pathfinding::Path> last_path_;
+
+    // Phase 5: sim-time clock + motives
+    time::SimClock clock_;
+    MotiveSystem motive_system_;
+    double sim_minutes_accum_ = 0.0; // sim-minutes elapsed this tick, fed to systems
 };
 
 } // namespace sims

@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <deque>
 #include <string>
 
 namespace sims {
@@ -51,12 +52,16 @@ struct Sim {
     bool moving = false;
 };
 
-// Movement state: current target position (world space, y=0) and speed.
-// Phase 3 uses straight-line motion; Phase 4 replaces target with a path.
+// Movement state: a queue of world-space waypoints (tile centers) the Sim
+// walks through in order. Phase 4: waypoints are produced by the A* pathfinder.
+// `target` is the current waypoint being approached (or the last reached
+// position when idle). `final_target` is the user-requested destination.
 struct Movement {
     glm::vec3 target{0.0f, 0.0f, 0.0f};
+    glm::vec3 final_target{0.0f, 0.0f, 0.0f};
     float speed = 2.0f;          // meters per second
     bool has_target = false;
+    std::deque<glm::vec3> waypoints; // remaining waypoints after `target`
 };
 
 } // namespace sims

@@ -121,6 +121,10 @@ add_executable(sims
     src/render/SimAvatar.cpp
     src/render/stb_image_impl.cpp
     src/sim/MovementSystem.cpp
+    src/sim/MotiveSystem.cpp
+    src/sim/pathfinding/Pathfinder.cpp
+    src/sim/time/SimClock.cpp
+    src/sim/motives/Motives.cpp
 )
 target_include_directories(sims PRIVATE src)
 target_link_libraries(sims PRIVATE
@@ -149,5 +153,5 @@ if(SIMS_BUILD_TESTS)
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(Catch2)
     enable_testing()
-    # add_subdirectory(tests)  # enabled once tests exist
+    add_subdirectory(tests)
 endif()
