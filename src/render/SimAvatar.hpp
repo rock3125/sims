@@ -37,11 +37,17 @@ public:
     void update(float dt, bool moving);
 
     // Draw the avatar at world_pos with given facing (degrees) and walk_phase.
-    // `lit` is used for the procedural path; `lit_skin` for the skinned path.
-    void draw(Shader& lit, Shader& lit_skin, const glm::vec3& world_pos,
-              float facing_deg, float walk_phase, bool moving);
+    // For the procedural path, `lit` is used. For the skinned path, the
+    // avatar's own internal skin shader is used (loaded in init); the `lit`
+    // parameter is only used for fallback. Caller must set u_view_proj /
+    // u_light_dir / u_light_color / u_ambient on the lit shader before
+    // calling, and this method sets the same uniforms on the skin shader.
+    void draw(Shader& lit, const glm::vec3& world_pos,
+              float facing_deg, float walk_phase, bool moving,
+              const glm::mat4& view_proj);
 
     bool skinned() const { return mode_ == Mode::Skinned; }
+    Shader& skin_shader() { return skin_shader_; }
 
 private:
     enum class Mode { Uninit, Procedural, Skinned };
@@ -63,7 +69,8 @@ private:
     void pick_clips();
     void draw_procedural(Shader& lit, const glm::vec3& world_pos,
                          float facing_deg, float walk_phase, bool moving);
-    void draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float facing_deg);
+    void draw_skinned(const glm::mat4& view_proj, const glm::vec3& world_pos,
+                      float facing_deg);
     void draw_part(Shader& lit, const glm::mat4& model, const glm::vec3& color);
 };
 

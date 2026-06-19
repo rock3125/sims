@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <vector>
 
 namespace sims {
 
@@ -184,11 +185,11 @@ void SimAvatar::draw_procedural(Shader& lit, const glm::vec3& world_pos,
     arm( 1.0f, arm_swing);
 }
 
-void SimAvatar::draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float facing_deg) {
+void SimAvatar::draw_skinned(const glm::mat4& view_proj,
+                             const glm::vec3& world_pos, float facing_deg) {
     constexpr int kMaxBones = 128;
     int nb = static_cast<int>(bone_matrices_.size());
     if (nb > kMaxBones) {
-        // Hard clamp — a humanoid fits well within 128; warn once.
         static bool warned = false;
         if (!warned) {
             std::fprintf(stderr, "[avatar] %d bones exceeds shader max %d; clamping\n",
@@ -198,14 +199,15 @@ void SimAvatar::draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float
         nb = kMaxBones;
     }
 
-    lit_skin.use();
+    Shader& s = skin_shader_;
+    s.use();
+    s.set_mat4("u_view_proj", &view_proj[0][0]);
+    s.set_vec3("u_light_dir", 0.4f, 0.9f, 0.3f);
+    s.set_vec3("u_light_color", 1.2f, 1.15f, 1.05f);
+    s.set_vec3("u_ambient", 0.45f, 0.47f, 0.52f);
+
     float yaw = glm::radians(facing_deg);
 
-    // Normalize the avatar to ~1.7m tall with feet at y=0. Mixamo/FBX exports
-    // are typically in centimeters (height ~170), so without this the mesh is
-    // ~100x too large and the camera ends up inside it (invisible due to
-    // backface culling). bbox_min.y is the lowest vertex (feet); subtracting
-    // it pins the feet to the floor after scaling.
     constexpr float kTargetHeight = 1.7f;
     float raw_h = model_.height();
     float scale = (raw_h > 1e-4f) ? kTargetHeight / raw_h : 1.0f;
@@ -216,37 +218,46 @@ void SimAvatar::draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float
             glm::translate(glm::mat4(1.0f), world_pos + glm::vec3(0.0f, y_off, 0.0f)),
             yaw, glm::vec3(0, 1, 0)),
         glm::vec3(scale));
-    lit_skin.set_mat4("u_model", &model[0][0]);
+    s.set_mat4("u_model", &model[0][0]);
 
     for (int i = 0; i < nb; ++i) {
         char uname[32];
         std::snprintf(uname, sizeof(uname), "u_bone_matrices[%d]", i);
-        lit_skin.set_mat4(uname, &bone_matrices_[i][0][0]);
+        s.set_mat4(uname, &bone_matrices_[i][0][0]);
+    }
+
+    // One-shot draw-time diagnostic.
+    static bool diag = false;
+    if (!diag) {
+        diag = true;
+        std::printf("[avatar-draw] skin prog=%u nbones=%d scale=%.5f y_off=%.4f\n",
+                    s.program(), nb, scale, y_off);
+        std::printf("[avatar-draw] world_pos=(%.3f,%.3f,%.3f) facing=%.1f\n",
+                    world_pos.x, world_pos.y, world_pos.z, facing_deg);
     }
 
     for (const SkinnedModelMesh& mm : model_.meshes()) {
         if (mm.texture) {
             mm.texture->bind(0);
-            lit_skin.set_int("u_has_texture", 1);
-            // Boost base_color above the FBX material's dim (0.8,0.8,0.8) so
-            // the textured avatar isn't lost against the checkerboard floor.
+            s.set_int("u_has_texture", 1);
             glm::vec3 boosted = glm::clamp(
                 glm::vec3(mm.base_color) * 1.25f, 0.0f, 1.0f);
-            lit_skin.set_vec3("u_base_color", boosted.r, boosted.g, boosted.b);
+            s.set_vec3("u_base_color", boosted.r, boosted.g, boosted.b);
         } else {
-            lit_skin.set_int("u_has_texture", 0);
-            // Bright fallback so untextured meshes are unmistakably visible.
-            lit_skin.set_vec3("u_base_color", 0.9f, 0.3f, 0.3f);
+            s.set_int("u_has_texture", 0);
+            s.set_vec3("u_base_color", 0.9f, 0.3f, 0.3f);
         }
         mm.mesh.draw();
     }
+    s.release();
 }
 
-void SimAvatar::draw(Shader& lit, Shader& lit_skin, const glm::vec3& world_pos,
-                     float facing_deg, float walk_phase, bool moving) {
+void SimAvatar::draw(Shader& lit, const glm::vec3& world_pos,
+                     float facing_deg, float walk_phase, bool moving,
+                     const glm::mat4& view_proj) {
     if (mode_ == Mode::Skinned) {
         animator_.compute_bone_matrices(bone_matrices_);
-        draw_skinned(lit_skin, world_pos, facing_deg);
+        draw_skinned(view_proj, world_pos, facing_deg);
     } else {
         draw_procedural(lit, world_pos, facing_deg, walk_phase, moving);
     }

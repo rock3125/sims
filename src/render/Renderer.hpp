@@ -63,7 +63,6 @@ private:
 
     Shader lit_shader_;
     Shader flat_shader_;
-    Shader skin_shader_;  // linear-blend skinning variant of lit (avatar only)
     Mesh floor_mesh_;
     Mesh furniture_mesh_;
     Texture floor_texture_;

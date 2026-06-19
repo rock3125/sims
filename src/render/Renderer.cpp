@@ -197,25 +197,10 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
     // Sim avatar. Skinned (high-quality glTF mesh + skeleton + animation
     // clips) when an asset is present, else the procedural cube humanoid.
     if (sim_state_) {
-        if (avatar_.skinned()) {
-            lit_shader_.release();
-            skin_shader_.use();
-            skin_shader_.set_mat4("u_view_proj", &vp[0][0]);
-            skin_shader_.set_vec3("u_light_dir", 0.4f, 0.9f, 0.3f);
-            skin_shader_.set_vec3("u_light_color", 1.2f, 1.15f, 1.05f);
-            skin_shader_.set_vec3("u_ambient", 0.45f, 0.47f, 0.52f);
-            avatar_.update(sim_state_->dt, sim_state_->moving);
-            avatar_.draw(lit_shader_, skin_shader_, sim_state_->position,
-                         sim_state_->facing_deg, sim_state_->walk_phase,
-                         sim_state_->moving);
-            skin_shader_.release();
-            lit_shader_.use();
-        } else {
-            avatar_.update(sim_state_->dt, sim_state_->moving);
-            avatar_.draw(lit_shader_, lit_shader_, sim_state_->position,
-                         sim_state_->facing_deg, sim_state_->walk_phase,
-                         sim_state_->moving);
-        }
+        avatar_.update(sim_state_->dt, sim_state_->moving);
+        avatar_.draw(lit_shader_, sim_state_->position,
+                     sim_state_->facing_deg, sim_state_->walk_phase,
+                     sim_state_->moving, vp);
     }
     lit_shader_.release();
 

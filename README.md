@@ -4,6 +4,11 @@ A *Sims*-like life-simulation game prototype, written in modern C++ (C++20) on
 SDL2 + OpenGL 3.3 Core. Data-driven content (JSON), entity-component-system
 (entt) architecture, and a fixed-timestep simulation.
 
+```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+```
+
 ## Stack
 
 - **Window/Input/Audio:** SDL2
