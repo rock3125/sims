@@ -228,10 +228,16 @@ void SimAvatar::draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float
         if (mm.texture) {
             mm.texture->bind(0);
             lit_skin.set_int("u_has_texture", 1);
+            // Boost base_color above the FBX material's dim (0.8,0.8,0.8) so
+            // the textured avatar isn't lost against the checkerboard floor.
+            glm::vec3 boosted = glm::clamp(
+                glm::vec3(mm.base_color) * 1.25f, 0.0f, 1.0f);
+            lit_skin.set_vec3("u_base_color", boosted.r, boosted.g, boosted.b);
         } else {
             lit_skin.set_int("u_has_texture", 0);
+            // Bright fallback so untextured meshes are unmistakably visible.
+            lit_skin.set_vec3("u_base_color", 0.9f, 0.3f, 0.3f);
         }
-        lit_skin.set_vec3("u_base_color", mm.base_color.r, mm.base_color.g, mm.base_color.b);
         mm.mesh.draw();
     }
 }

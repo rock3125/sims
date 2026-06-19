@@ -87,7 +87,7 @@ bool Application::init() {
         return false;
     }
     camera_.set_perspective(50.0f, static_cast<float>(drawable_w) / drawable_h, 0.1f, 200.0f);
-    camera_.set_orbit(45.0f, 35.0f, 18.0f);
+    camera_.set_orbit(45.0f, 35.0f, 8.0f);
     camera_.set_target({0.0f, 0.8f, 0.0f});
 
     renderer_.set_tile_grid(&grid_);

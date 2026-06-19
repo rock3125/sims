@@ -202,8 +202,8 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
             skin_shader_.use();
             skin_shader_.set_mat4("u_view_proj", &vp[0][0]);
             skin_shader_.set_vec3("u_light_dir", 0.4f, 0.9f, 0.3f);
-            skin_shader_.set_vec3("u_light_color", 1.0f, 0.96f, 0.88f);
-            skin_shader_.set_vec3("u_ambient", 0.25f, 0.27f, 0.32f);
+            skin_shader_.set_vec3("u_light_color", 1.2f, 1.15f, 1.05f);
+            skin_shader_.set_vec3("u_ambient", 0.45f, 0.47f, 0.52f);
             avatar_.update(sim_state_->dt, sim_state_->moving);
             avatar_.draw(lit_shader_, skin_shader_, sim_state_->position,
                          sim_state_->facing_deg, sim_state_->walk_phase,
@@ -215,30 +215,6 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
             avatar_.draw(lit_shader_, lit_shader_, sim_state_->position,
                          sim_state_->facing_deg, sim_state_->walk_phase,
                          sim_state_->moving);
-        }
-
-        static bool verified = false;
-        if (!verified) {
-            GLint vp[4];
-            glGetIntegerv(GL_VIEWPORT, vp);
-            glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            // Count "non-background" pixels near screen center: anything
-            // brighter than the clear color (0.10,0.12,0.16 → ~26,31,41) is
-            // treated as avatar/object geometry. Procedural avatar used to be
-            // blue; the skinned avatar is textured, so we sample generically.
-            int hits = 0;
-            for (int oy = -30; oy <= 30; oy += 6) {
-                for (int ox = -30; ox <= 30; ox += 6) {
-                    unsigned char px[3];
-                    glReadPixels(vp[2]/2 + ox, vp[3]/2 + oy, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, px);
-                    if (px[0] > 60 || px[1] > 60 || px[2] > 60) hits++;
-                }
-            }
-            std::printf("[render] avatar %s sim_pos=(%.2f,%.2f,%.2f) "
-                        "non-background pixels near center: %d/121\n",
-                avatar_.skinned() ? "skinned" : "procedural",
-                sim_state_->position.x, sim_state_->position.y, sim_state_->position.z, hits);
-            verified = true;
         }
     }
     lit_shader_.release();
