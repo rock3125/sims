@@ -84,7 +84,9 @@ Texture* decode_embedded(const aiTexture* et,
 //   2) File on disk relative to the model directory (or absolute if path is
 //       already absolute) — non-embedded glTFs / loose-texture FBX exports.
 Texture* resolve_texture(const aiScene* scene, aiMaterial* mat, const std::string& dir,
-                         std::vector<std::unique_ptr<Texture>>& out_owner) {
+                         std::vector<std::unique_ptr<Texture>>& out_owner,
+                         int mesh_index) {
+    (void)mesh_index;
     aiTextureType ttype = mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0
         ? aiTextureType_BASE_COLOR : aiTextureType_DIFFUSE;
     if (mat->GetTextureCount(ttype) == 0) return nullptr;
@@ -103,9 +105,7 @@ Texture* resolve_texture(const aiScene* scene, aiMaterial* mat, const std::strin
         } catch (...) { /* fall through */ }
     }
 
-    // 1b) Match by basename against scene->mTextures[]. FBX often leaves the
-    //    original server-side path in the material but stores the embedded
-    //    blob under its leaf name (e.g. "Ch22_1001_Diffuse.png").
+    // 1b) Match by basename against scene->mTextures[].
     std::string want = lower(basename_of(raw));
     if (!want.empty()) {
         for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
@@ -142,8 +142,12 @@ bool SkinnedModel::load_from_file(const std::string& path) {
     // aiProcess_EmbedTextures keeps embedded FBX/glTF media in scene->mTextures[]
     //   (Mixamo FBX stores textures as embedded Video objects with absolute
     //   server-side filename strings — only the embedded blobs are usable).
+    // Note: no aiProcess_FlipUVs — Mixamo FBX UVs are already in OpenGL
+    // convention (V=0 at bottom), and Texture::load_* calls
+    // stbi_set_flip_vertically_on_load(1) which handles the image flip.
+    // Adding FlipUVs here would double-flip and scramble the texture mapping.
     const aiScene* scene = importer.ReadFile(path,
-        aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs |
+        aiProcess_Triangulate | aiProcess_GenSmoothNormals |
         aiProcess_JoinIdenticalVertices | aiProcess_PopulateArmatureData |
         aiProcess_LimitBoneWeights | aiProcess_EmbedTextures);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -247,7 +251,8 @@ bool SkinnedModel::load_from_file(const std::string& path) {
                 aiGetMaterialColor(mat, AI_MATKEY_COLOR_DIFFUSE, &diff);
             }
             mm.base_color = {diff.r, diff.g, diff.b, diff.a};
-            mm.texture = resolve_texture(scene, mat, directory_, textures_);
+            mm.texture = resolve_texture(scene, mat, directory_, textures_,
+                                         static_cast<int>(mi));
         }
         meshes_.push_back(std::move(mm));
     }
