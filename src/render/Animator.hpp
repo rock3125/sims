@@ -45,7 +45,8 @@ private:
     bool loop_ = true;
 
     void traverse(int node_idx, const glm::mat4& parent_global,
-                  std::vector<glm::mat4>& node_globals) const;
+                  std::vector<glm::mat4>& node_globals,
+                  bool ancestor_animated) const;
 };
 
 } // namespace sims
