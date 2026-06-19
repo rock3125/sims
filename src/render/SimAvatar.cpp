@@ -200,8 +200,22 @@ void SimAvatar::draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float
 
     lit_skin.use();
     float yaw = glm::radians(facing_deg);
-    glm::mat4 model = glm::rotate(glm::translate(glm::mat4(1.0f), world_pos),
-                                  yaw, glm::vec3(0, 1, 0));
+
+    // Normalize the avatar to ~1.7m tall with feet at y=0. Mixamo/FBX exports
+    // are typically in centimeters (height ~170), so without this the mesh is
+    // ~100x too large and the camera ends up inside it (invisible due to
+    // backface culling). bbox_min.y is the lowest vertex (feet); subtracting
+    // it pins the feet to the floor after scaling.
+    constexpr float kTargetHeight = 1.7f;
+    float raw_h = model_.height();
+    float scale = (raw_h > 1e-4f) ? kTargetHeight / raw_h : 1.0f;
+    float y_off = -model_.bbox_min().y * scale;
+
+    glm::mat4 model = glm::scale(
+        glm::rotate(
+            glm::translate(glm::mat4(1.0f), world_pos + glm::vec3(0.0f, y_off, 0.0f)),
+            yaw, glm::vec3(0, 1, 0)),
+        glm::vec3(scale));
     lit_skin.set_mat4("u_model", &model[0][0]);
 
     for (int i = 0; i < nb; ++i) {

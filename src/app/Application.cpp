@@ -87,8 +87,8 @@ bool Application::init() {
         return false;
     }
     camera_.set_perspective(50.0f, static_cast<float>(drawable_w) / drawable_h, 0.1f, 200.0f);
-    camera_.set_orbit(45.0f, 35.0f, 12.0f);
-    camera_.set_target({0.0f, 1.0f, 0.0f});
+    camera_.set_orbit(45.0f, 35.0f, 18.0f);
+    camera_.set_target({0.0f, 0.8f, 0.0f});
 
     renderer_.set_tile_grid(&grid_);
 
@@ -104,17 +104,24 @@ bool Application::init() {
     autonomy_system_.emplace(library_, *pathfinder_, grid_.coord(),
                              *action_system_);
 
-    // Seed a small 4x4 starter room outline (tiles 6..9 on each axis) so the
-    // wall renderer has visible geometry before the user places anything.
-    for (int i = 0; i < 4; ++i) {
-        grid_.add_wall(6 + i, 6, world::TileGrid::Side::North);  // bottom edge (z=6)
-        grid_.add_wall(6 + i, 9, world::TileGrid::Side::North);  // top edge (z=10 line)
-        grid_.add_wall(6, 6 + i, world::TileGrid::Side::East);   // left edge (x=6)
-        grid_.add_wall(9, 6 + i, world::TileGrid::Side::East);   // right edge (x=10 line)
+    // Seed a larger starter room: perimeter walls around tiles (4..12), giving
+    // a 9x9 interior so the avatar + furniture have room to breathe. Walls are
+    // placed on the outer edges of the boundary tiles.
+    constexpr int room_x0 = 3, room_x1 = 12; // wall-bearing tile columns
+    constexpr int room_z0 = 3, room_z1 = 12;
+    for (int i = room_x0; i <= room_x1; ++i) {
+        grid_.add_wall(i, room_z0 - 1, world::TileGrid::Side::North); // south wall
+        grid_.add_wall(i, room_z1,     world::TileGrid::Side::North); // north wall
+    }
+    for (int i = room_z0; i <= room_z1; ++i) {
+        grid_.add_wall(room_x0 - 1, i, world::TileGrid::Side::East);  // west wall
+        grid_.add_wall(room_x1,     i, world::TileGrid::Side::East);  // east wall
     }
 
-    // Create the Sim entity at the center of the starter room (tile 8,8).
-    glm::vec3 sim_start = grid_.coord().tile_to_world(8, 8);
+    // Create the Sim entity at the center of the starter room.
+    int sim_tx = (room_x0 + room_x1) / 2;
+    int sim_tz = (room_z0 + room_z1) / 2;
+    glm::vec3 sim_start = grid_.coord().tile_to_world(sim_tx, sim_tz);
     sim_entity_ = registry_.create();
     registry_.emplace<Transform>(sim_entity_, Transform{sim_start, 0.0f, {1, 1, 1}});
     registry_.emplace<Sim>(sim_entity_, Sim{"Alex", 0.0f, 0.0f, false});
@@ -122,7 +129,7 @@ bool Application::init() {
     registry_.emplace<Motives>(sim_entity_, Motives{});
     registry_.emplace<ActionQueue>(sim_entity_, ActionQueue{});
 
-    // Phase 6: spawn one of each object def inside the starter room.
+    // Phase 6: spawn one of each object def spread across the room corners.
     auto spawn = [&](const std::string& def_id, int tx, int tz) {
         const auto* def = library_.object(def_id);
         if (!def) return;
@@ -137,10 +144,10 @@ bool Application::init() {
         registry_.emplace<WorldObject>(e, WorldObject{def_id, tx, tz,
             def->footprint_w, def->footprint_d, def->color});
     };
-    spawn("fridge",  7, 7);
-    spawn("bed",     9, 7);
-    spawn("toilet",  7, 9);
-    spawn("tv",      9, 9);
+    spawn("fridge",  room_x0 + 1, room_z0 + 1);
+    spawn("bed",     room_x1 - 1, room_z0 + 1);
+    spawn("toilet",  room_x0 + 1, room_z1 - 1);
+    spawn("tv",      room_x1 - 1, room_z1 - 1);
 
     return true;
 }

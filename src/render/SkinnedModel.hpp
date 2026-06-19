@@ -46,6 +46,12 @@ public:
     const std::vector<std::string>& clip_names() const { return clip_names_; }
     const std::vector<SkinnedModelMesh>& meshes() const { return meshes_; }
 
+    // Axis-aligned bounding box of bind-pose vertices (model space). Used by
+    // the avatar to normalize scale (Mixamo FBX exports in centimeters).
+    glm::vec3 bbox_min() const { return bbox_min_; }
+    glm::vec3 bbox_max() const { return bbox_max_; }
+    float height() const { return bbox_max_.y - bbox_min_.y; }
+
     // Draw every submesh. Caller must have a skinning shader bound with
     // u_view_proj/u_model/u_bone_matrices[0..N-1] set, plus lighting uniforms.
     // `bone_matrices` must be sized to skeleton().bones().size(); pass nullptr
@@ -58,6 +64,8 @@ private:
     std::string directory_;
     Skeleton skeleton_;
     std::vector<std::string> clip_names_;
+    glm::vec3 bbox_min_{0.0f};
+    glm::vec3 bbox_max_{0.0f};
 
     void import_clips(const aiScene* scene, const std::string& name_override);
 };

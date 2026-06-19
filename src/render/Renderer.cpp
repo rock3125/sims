@@ -222,16 +222,22 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
             GLint vp[4];
             glGetIntegerv(GL_VIEWPORT, vp);
             glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            int blue_hits = 0;
+            // Count "non-background" pixels near screen center: anything
+            // brighter than the clear color (0.10,0.12,0.16 → ~26,31,41) is
+            // treated as avatar/object geometry. Procedural avatar used to be
+            // blue; the skinned avatar is textured, so we sample generically.
+            int hits = 0;
             for (int oy = -30; oy <= 30; oy += 6) {
                 for (int ox = -30; ox <= 30; ox += 6) {
                     unsigned char px[3];
                     glReadPixels(vp[2]/2 + ox, vp[3]/2 + oy, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, px);
-                    if (px[2] > px[0] + 25 && px[2] > px[1] + 10) blue_hits++;
+                    if (px[0] > 60 || px[1] > 60 || px[2] > 60) hits++;
                 }
             }
-            std::printf("[render] avatar sim_pos=(%.2f,%.2f,%.2f) blue-ish pixels near center: %d/121\n",
-                sim_state_->position.x, sim_state_->position.y, sim_state_->position.z, blue_hits);
+            std::printf("[render] avatar %s sim_pos=(%.2f,%.2f,%.2f) "
+                        "non-background pixels near center: %d/121\n",
+                avatar_.skinned() ? "skinned" : "procedural",
+                sim_state_->position.x, sim_state_->position.y, sim_state_->position.z, hits);
             verified = true;
         }
     }

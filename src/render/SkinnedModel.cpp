@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <string>
 
 namespace sims {
@@ -152,6 +153,10 @@ bool SkinnedModel::load_from_file(const std::string& path) {
     std::printf("[skinned] scene: %u meshes, %u embedded textures, %u animations\n",
                 scene->mNumMeshes, scene->mNumTextures, scene->mNumAnimations);
 
+    bbox_min_ = glm::vec3(std::numeric_limits<float>::max());
+    bbox_max_ = glm::vec3(std::numeric_limits<float>::lowest());
+    bool bbox_valid = false;
+
     // 1) Build the node tree (armature + scene nodes) from the root.
     std::function<void(aiNode*, int)> walk_nodes = [&](aiNode* node, int parent) {
         int idx = skeleton_.add_node(node->mName.C_Str(), parent,
@@ -188,6 +193,9 @@ bool SkinnedModel::load_from_file(const std::string& path) {
         for (unsigned int v = 0; v < am->mNumVertices; ++v) {
             SkinnedVertex sv;
             sv.position = {am->mVertices[v].x, am->mVertices[v].y, am->mVertices[v].z};
+            bbox_min_ = glm::min(bbox_min_, sv.position);
+            bbox_max_ = glm::max(bbox_max_, sv.position);
+            bbox_valid = true;
             sv.normal = am->mNormals
                 ? glm::vec3(am->mNormals[v].x, am->mNormals[v].y, am->mNormals[v].z)
                 : glm::vec3(0.0f, 1.0f, 0.0f);
@@ -247,10 +255,14 @@ bool SkinnedModel::load_from_file(const std::string& path) {
     // 3) Import animation clips embedded in the avatar file.
     import_clips(scene, /*name_override=*/"");
 
+    if (!bbox_valid) { bbox_min_ = glm::vec3(0.0f); bbox_max_ = glm::vec3(0.0f); }
     importer.FreeScene();
-    std::printf("[skinned] loaded %s: %zu meshes, %zu bones, %zu nodes, %zu clips\n",
+    std::printf("[skinned] loaded %s: %zu meshes, %zu bones, %zu nodes, %zu clips, "
+                "bbox [%.2f,%.2f,%.2f]..[%.2f,%.2f,%.2f] height=%.2f\n",
                 path.c_str(), meshes_.size(), skeleton_.bones().size(),
-                skeleton_.nodes().size(), skeleton_.clips().size());
+                skeleton_.nodes().size(), skeleton_.clips().size(),
+                bbox_min_.x, bbox_min_.y, bbox_min_.z,
+                bbox_max_.x, bbox_max_.y, bbox_max_.z, height());
     return !meshes_.empty();
 }
 
