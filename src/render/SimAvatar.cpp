@@ -4,14 +4,134 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdio>
+#include <filesystem>
 
 namespace sims {
 
-void SimAvatar::init() {
-    if (inited_) return;
+namespace {
+
+std::string lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+bool contains(const std::string& haystack, const std::string& needle) {
+    return lower(haystack).find(needle) != std::string::npos;
+}
+
+} // namespace
+
+void SimAvatar::init(const std::string& assets_dir) {
+    if (mode_ != Mode::Uninit) return;
+    // Procedural cube is always built (cheap, and used as the fallback).
     cube_ = Mesh::make_cube(1.0f);
-    inited_ = true;
+
+    load_skinned_asset(assets_dir);
+
+    if (mode_ != Mode::Skinned) {
+        mode_ = Mode::Procedural;
+        std::printf("[avatar] no skinned asset found; using procedural cube humanoid\n");
+    }
+}
+
+void SimAvatar::load_skinned_asset(const std::string& assets_dir) {
+    namespace fs = std::filesystem;
+    const fs::path dir = assets_dir + "/models";
+
+    // Try a few common avatar filenames + formats.
+    const std::vector<std::string> candidates = {
+        "female_avatar.glb", "female_avatar.gltf", "female_avatar.fbx",
+        "avatar.glb", "avatar.gltf", "avatar.fbx",
+        "sim.glb", "sim.gltf", "sim.fbx",
+    };
+
+    fs::path chosen;
+    for (const auto& name : candidates) {
+        fs::path p = dir / name;
+        if (fs::exists(p)) { chosen = p; break; }
+    }
+    // If nothing matched but the dir exists, try the first .glb/.gltf/.fbx found.
+    if (chosen.empty() && fs::exists(dir)) {
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            std::string ext = lower(entry.path().extension().string());
+            if (ext == ".glb" || ext == ".gltf" || ext == ".fbx") {
+                chosen = entry.path();
+                break;
+            }
+        }
+    }
+    if (chosen.empty()) return;
+
+    if (!skin_shader_.load_from_files(assets_dir + "/shaders/lit_skin.vert",
+                                      assets_dir + "/shaders/lit.frag")) {
+        std::fprintf(stderr, "[avatar] lit_skin shader failed; falling back to procedural\n");
+        return;
+    }
+    if (!model_.load_from_file(chosen.string())) {
+        std::fprintf(stderr, "[avatar] skinned load failed; falling back to procedural\n");
+        return;
+    }
+
+    // Merge animation clips from sibling files in the same directory. Mixamo
+    // ships each clip as its own FBX (all named "mixamo.com" internally), so
+    // we override each clip's name with the file's stem — e.g. "Neutral Idle"
+    // → matched as idle, "Walking" → walk, "Running" → run. The avatar file
+    // itself is skipped (its embedded clips are already loaded).
+    namespace fs = std::filesystem;
+    if (fs::exists(dir)) {
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path() == chosen) continue;
+            std::string ext = lower(entry.path().extension().string());
+            if (ext != ".fbx" && ext != ".glb" && ext != ".gltf") continue;
+            std::string stem = entry.path().stem().string();
+            model_.load_animations_from_file(entry.path().string(), stem);
+        }
+    }
+
+    animator_.set_skeleton(&model_.skeleton());
+    pick_clips();
+    bone_matrices_.assign(model_.skeleton().bones().size(), glm::mat4(1.0f));
+    mode_ = Mode::Skinned;
+    std::printf("[avatar] skinned mode: idle=\"%s\" walk=\"%s\" run=\"%s\"\n",
+                idle_clip_.c_str(), walk_clip_.c_str(), run_clip_.c_str());
+}
+
+void SimAvatar::pick_clips() {
+    const auto& names = model_.clip_names();
+    if (names.empty()) return;
+    auto find_if = [&](auto pred) -> std::string {
+        for (const auto& n : names) if (pred(n)) return n;
+        return {};
+    };
+    idle_clip_ = find_if([](const std::string& n) {
+        return contains(n, "idle") || contains(n, "rest") || contains(n, "stand") || contains(n, "breath");
+    });
+    walk_clip_ = find_if([](const std::string& n) {
+        return contains(n, "walk") || contains(n, "move");
+    });
+    run_clip_ = find_if([](const std::string& n) {
+        return contains(n, "run") || contains(n, "sprint") || contains(n, "jog");
+    });
+    if (idle_clip_.empty()) idle_clip_ = names.front();
+    if (walk_clip_.empty()) walk_clip_ = run_clip_.empty() ? idle_clip_ : run_clip_;
+}
+
+void SimAvatar::update(float dt, bool moving) {
+    if (mode_ != Mode::Skinned) return;
+    const char* desired = moving ? (walk_clip_.empty() ? nullptr : walk_clip_.c_str())
+                                 : (idle_clip_.empty() ? nullptr : idle_clip_.c_str());
+    if (desired && (animator_.current_clip() != desired || !animator_.playing())) {
+        animator_.play(desired, true, 1.0f, false);
+    } else if (!desired) {
+        animator_.play("", false, 1.0f, false);
+    }
+    animator_.update(dt);
 }
 
 void SimAvatar::draw_part(Shader& lit, const glm::mat4& model, const glm::vec3& color) {
@@ -21,33 +141,26 @@ void SimAvatar::draw_part(Shader& lit, const glm::mat4& model, const glm::vec3& 
     cube_.draw();
 }
 
-void SimAvatar::draw(Shader& lit, const glm::vec3& world_pos, float facing_deg,
-                     float walk_phase, bool moving) {
-    init();
-
+void SimAvatar::draw_procedural(Shader& lit, const glm::vec3& world_pos,
+                                float facing_deg, float walk_phase, bool moving) {
     float yaw = glm::radians(facing_deg);
     float bob = moving ? std::sin(walk_phase * 2.0f) * 0.04f : 0.0f;
     float leg_swing = moving ? std::sin(walk_phase) * 0.5f : 0.0f;
     float arm_swing = moving ? std::sin(walk_phase) * 0.4f : 0.0f;
 
     glm::vec3 base = world_pos + glm::vec3(0.0f, bob, 0.0f);
-
-    // Root transform: translate to position, rotate to facing.
     auto root = glm::rotate(glm::translate(glm::mat4(1.0f), base), yaw, glm::vec3(0, 1, 0));
 
-    // Torso: 0.45w x 0.7h x 0.25d, center at y=1.05
     glm::mat4 torso = glm::scale(
         glm::translate(root, {0.0f, 1.05f, 0.0f}),
         {0.45f, 0.70f, 0.25f});
     draw_part(lit, torso, {0.2f, 0.5f, 0.8f});
 
-    // Head: 0.22 cube at y=1.55
     glm::mat4 head = glm::scale(
         glm::translate(root, {0.0f, 1.55f, 0.0f}),
         {0.22f, 0.22f, 0.22f});
     draw_part(lit, head, {0.95f, 0.78f, 0.65f});
 
-    // Legs: 0.15w x 0.8h x 0.15d, hip at y=0.7. Swing around hip (x-axis).
     auto leg = [&](float side, float swing) {
         glm::mat4 hip = glm::translate(root, {side * 0.11f, 0.70f, 0.0f});
         hip = glm::rotate(hip, swing, glm::vec3(1, 0, 0));
@@ -59,7 +172,6 @@ void SimAvatar::draw(Shader& lit, const glm::vec3& world_pos, float facing_deg,
     leg(-1.0f, leg_swing);
     leg( 1.0f, -leg_swing);
 
-    // Arms: 0.12w x 0.55h x 0.12d, shoulder at y=1.35. Swing opposite to legs.
     auto arm = [&](float side, float swing) {
         glm::mat4 shoulder = glm::translate(root, {side * 0.28f, 1.35f, 0.0f});
         shoulder = glm::rotate(shoulder, swing, glm::vec3(1, 0, 0));
@@ -70,6 +182,54 @@ void SimAvatar::draw(Shader& lit, const glm::vec3& world_pos, float facing_deg,
     };
     arm(-1.0f, -arm_swing);
     arm( 1.0f, arm_swing);
+}
+
+void SimAvatar::draw_skinned(Shader& lit_skin, const glm::vec3& world_pos, float facing_deg) {
+    constexpr int kMaxBones = 128;
+    int nb = static_cast<int>(bone_matrices_.size());
+    if (nb > kMaxBones) {
+        // Hard clamp — a humanoid fits well within 128; warn once.
+        static bool warned = false;
+        if (!warned) {
+            std::fprintf(stderr, "[avatar] %d bones exceeds shader max %d; clamping\n",
+                         nb, kMaxBones);
+            warned = true;
+        }
+        nb = kMaxBones;
+    }
+
+    lit_skin.use();
+    float yaw = glm::radians(facing_deg);
+    glm::mat4 model = glm::rotate(glm::translate(glm::mat4(1.0f), world_pos),
+                                  yaw, glm::vec3(0, 1, 0));
+    lit_skin.set_mat4("u_model", &model[0][0]);
+
+    for (int i = 0; i < nb; ++i) {
+        char uname[32];
+        std::snprintf(uname, sizeof(uname), "u_bone_matrices[%d]", i);
+        lit_skin.set_mat4(uname, &bone_matrices_[i][0][0]);
+    }
+
+    for (const SkinnedModelMesh& mm : model_.meshes()) {
+        if (mm.texture) {
+            mm.texture->bind(0);
+            lit_skin.set_int("u_has_texture", 1);
+        } else {
+            lit_skin.set_int("u_has_texture", 0);
+        }
+        lit_skin.set_vec3("u_base_color", mm.base_color.r, mm.base_color.g, mm.base_color.b);
+        mm.mesh.draw();
+    }
+}
+
+void SimAvatar::draw(Shader& lit, Shader& lit_skin, const glm::vec3& world_pos,
+                     float facing_deg, float walk_phase, bool moving) {
+    if (mode_ == Mode::Skinned) {
+        animator_.compute_bone_matrices(bone_matrices_);
+        draw_skinned(lit_skin, world_pos, facing_deg);
+    } else {
+        draw_procedural(lit, world_pos, facing_deg, walk_phase, moving);
+    }
 }
 
 } // namespace sims

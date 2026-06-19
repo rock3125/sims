@@ -54,6 +54,10 @@ bool Renderer::init(int viewport_w, int viewport_h, const std::string& assets_di
     furniture_mesh_ = Mesh::make_cube(1.0f);
     floor_texture_.adopt(make_checker_texture(256, 256, 32), 256, 256);
 
+    // Phase 3+: try to load a real skinned female avatar (skeleton + walk/idle
+    // clips). Degrades gracefully to the procedural cube humanoid.
+    avatar_.init(assets_dir);
+
     glGenVertexArrays(1, &grid_vao_);
     glGenBuffers(1, &grid_vbo_);
     glGenVertexArrays(1, &wall_vao_);
@@ -190,10 +194,28 @@ void Renderer::render(const Camera& cam, double /*alpha*/) {
         furniture_mesh_.draw();
     }
 
-    // Sim avatar (procedural humanoid with walk-cycle animation).
+    // Sim avatar. Skinned (high-quality glTF mesh + skeleton + animation
+    // clips) when an asset is present, else the procedural cube humanoid.
     if (sim_state_) {
-        avatar_.draw(lit_shader_, sim_state_->position, sim_state_->facing_deg,
-                     sim_state_->walk_phase, sim_state_->moving);
+        if (avatar_.skinned()) {
+            lit_shader_.release();
+            skin_shader_.use();
+            skin_shader_.set_mat4("u_view_proj", &vp[0][0]);
+            skin_shader_.set_vec3("u_light_dir", 0.4f, 0.9f, 0.3f);
+            skin_shader_.set_vec3("u_light_color", 1.0f, 0.96f, 0.88f);
+            skin_shader_.set_vec3("u_ambient", 0.25f, 0.27f, 0.32f);
+            avatar_.update(sim_state_->dt, sim_state_->moving);
+            avatar_.draw(lit_shader_, skin_shader_, sim_state_->position,
+                         sim_state_->facing_deg, sim_state_->walk_phase,
+                         sim_state_->moving);
+            skin_shader_.release();
+            lit_shader_.use();
+        } else {
+            avatar_.update(sim_state_->dt, sim_state_->moving);
+            avatar_.draw(lit_shader_, lit_shader_, sim_state_->position,
+                         sim_state_->facing_deg, sim_state_->walk_phase,
+                         sim_state_->moving);
+        }
 
         static bool verified = false;
         if (!verified) {

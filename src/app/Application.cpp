@@ -713,6 +713,7 @@ int Application::run() {
                 s.facing_deg = sim->facing_deg;
                 s.walk_phase = sim->walk_phase;
                 s.moving = sim->moving;
+                s.dt = static_cast<float>(frame_dt);
                 renderer_.set_sim(s);
             }
         } else {

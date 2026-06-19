@@ -20,6 +20,7 @@ struct SimRenderState {
     float facing_deg = 0.0f;
     float walk_phase = 0.0f;
     bool moving = false;
+    float dt = 0.0f; // real-time seconds since the previous frame
 };
 
 // One entry per placed world object this frame.
@@ -62,6 +63,7 @@ private:
 
     Shader lit_shader_;
     Shader flat_shader_;
+    Shader skin_shader_;  // linear-blend skinning variant of lit (avatar only)
     Mesh floor_mesh_;
     Mesh furniture_mesh_;
     Texture floor_texture_;

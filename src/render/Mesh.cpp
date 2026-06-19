@@ -55,6 +55,44 @@ void Mesh::upload(const std::vector<Vertex>& verts, const std::vector<unsigned i
     index_count_ = static_cast<GLsizei>(indices.size());
 }
 
+void Mesh::upload_skinned(const std::vector<SkinnedVertex>& verts,
+                          const std::vector<unsigned int>& indices) {
+    if (!vao_) {
+        glGenVertexArrays(1, &vao_);
+        glGenBuffers(1, &vbo_);
+        glGenBuffers(1, &ibo_);
+    }
+    glBindVertexArray(vao_);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(SkinnedVertex),
+                 verts.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
+                 indices.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
+                          (void*)offsetof(SkinnedVertex, position));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
+                          (void*)offsetof(SkinnedVertex, normal));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
+                          (void*)offsetof(SkinnedVertex, texcoord));
+    // Bone IDs (location 3) and weights (location 4) — used by lit_skin.vert.
+    glEnableVertexAttribArray(3);
+    glVertexAttribIPointer(3, 4, GL_INT, sizeof(SkinnedVertex),
+                           (void*)offsetof(SkinnedVertex, bone_ids));
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
+                          (void*)offsetof(SkinnedVertex, bone_weights));
+
+    glBindVertexArray(0);
+    index_count_ = static_cast<GLsizei>(indices.size());
+}
+
 void Mesh::draw() const {
     if (!vao_) return;
     glBindVertexArray(vao_);

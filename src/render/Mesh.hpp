@@ -14,6 +14,17 @@ struct Vertex {
     glm::vec2 texcoord;
 };
 
+// Vertex format augmented with linear-blend-skinning data: up to 4 bones per
+// vertex. `bone_ids` index into a SkinnedModel's bone array; `bone_weights`
+// are pre-normalized so they sum to 1 (or 0 for non-skinned vertices).
+struct SkinnedVertex {
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 texcoord;
+    glm::ivec4 bone_ids{0, 0, 0, 0};
+    glm::vec4 bone_weights{0.0f};
+};
+
 // A single drawable mesh: VAO + VBO + IBO, owning its GL buffers.
 // Non-copyable, movable. Renders with glDrawElements.
 class Mesh {
@@ -27,6 +38,8 @@ public:
     Mesh& operator=(Mesh&& o) noexcept;
 
     void upload(const std::vector<Vertex>& verts, const std::vector<unsigned int>& indices);
+    void upload_skinned(const std::vector<SkinnedVertex>& verts,
+                        const std::vector<unsigned int>& indices);
     void draw() const;
 
     GLsizei index_count() const { return index_count_; }

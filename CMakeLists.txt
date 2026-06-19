@@ -119,6 +119,9 @@ add_executable(sims
     src/render/Camera.cpp
     src/render/Renderer.cpp
     src/render/SimAvatar.cpp
+    src/render/SkinnedModel.cpp
+    src/render/Skeleton.cpp
+    src/render/Animator.cpp
     src/render/stb_image_impl.cpp
     src/sim/MovementSystem.cpp
     src/sim/MotiveSystem.cpp
@@ -147,6 +150,7 @@ target_compile_definitions(sims PRIVATE
     GLM_ENABLE_EXPERIMENTAL
     IMGUI_IMPL_OPENGL_LOADER_GLAD
     SIMS_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    SIMS_MAX_BONES=128
 )
 
 # -------------------------------------------------------------------
